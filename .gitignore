@@ -1,0 +1,4 @@
+*.txt
+!사용설명서.txt
+*.lock
+log_*.txt
