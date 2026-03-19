@@ -1,0 +1,39 @@
+﻿{
+    "Timestamp":  "2026-03-19 14:06:06",
+    "RunningServices":  106,
+    "DefenderDays":  0,
+    "DefenderOn":  true,
+    "StartupCount":  15,
+    "Model":  "INTEL X99",
+    "SMARTfail":  false,
+    "OSAgeMonths":  24,
+    "BSODcount":  0,
+    "OS":  "Microsoft Windows 10 Pro",
+    "DNSOK":  true,
+    "EventWarnings":  12,
+    "RAMtotalGB":  31.9,
+    "PCName":  "DESKTOP-VBBVCAP",
+    "RealTimeOn":  true,
+    "DaysSinceUpdate":  402,
+    "OSBuild":  "19045",
+    "EventErrors":  3,
+    "InternetOK":  true,
+    "CPUtempC":  -1,
+    "CPUloadPct":  [
+                       4,
+                       1
+                   ],
+    "RAMusedPct":  48,
+    "Issues":  "Windows not activated|No Windows update in 402 days",
+    "Disks":  [
+                  {
+                      "FreeGB":  481.3,
+                      "Drive":  "C:",
+                      "UsedPct":  48,
+                      "TotalGB":  931.4
+                  }
+              ],
+    "Activated":  false,
+    "IssueCount":  2,
+    "FirewallOn":  true
+}

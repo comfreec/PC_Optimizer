@@ -116,8 +116,10 @@ try {
 # ─── 4. CPU Load & Temperature ──────────────────────────────
 Section "4/8  CPU Load and Temperature"
 try {
-    $cpuLoad = (Get-WmiObject Win32_Processor).LoadPercentage
-    Info "CPU Load    : $cpuLoad%"
+    # Average across all sockets (handles dual-CPU systems)
+    $cpuLoads = @(Get-WmiObject Win32_Processor | Select-Object -ExpandProperty LoadPercentage)
+    $cpuLoad  = [math]::Round(($cpuLoads | Measure-Object -Average).Average, 0)
+    Info "CPU Load    : $cpuLoad%  ($($cpuLoads.Count) socket(s))"
     $snap.CPUloadPct = $cpuLoad
     if ($cpuLoad -gt 80)   { Issue "CPU load $cpuLoad% at idle - something overloading CPU" }
     elseif ($cpuLoad -gt 50){ Warn "CPU load $cpuLoad% at idle - higher than normal" }
