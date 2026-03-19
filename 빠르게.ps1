@@ -119,6 +119,36 @@ foreach ($p in $cleanPaths) {
     }
 }
 try { Clear-RecycleBin -Force -ErrorAction SilentlyContinue; Log "  Recycle Bin emptied" "Gray" } catch {}
+
+# Browser cache cleanup
+$browserCaches = @(
+    @{ Name="Chrome";  Path="$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache" },
+    @{ Name="Chrome2"; Path="$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Code Cache" },
+    @{ Name="Edge";    Path="$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache" },
+    @{ Name="Edge2";   Path="$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Code Cache" },
+    @{ Name="Firefox"; Path="$env:LOCALAPPDATA\Mozilla\Firefox\Profiles" },
+    @{ Name="Whale";   Path="$env:LOCALAPPDATA\Naver\Naver Whale\User Data\Default\Cache" },
+    @{ Name="Kakao";   Path="$env:LOCALAPPDATA\Kakao\KakaoTalk\Cache" }
+)
+foreach ($b in $browserCaches) {
+    if (Test-Path $b.Path) {
+        try {
+            $sz = (Get-ChildItem $b.Path -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+            if ($null -eq $sz) { $sz = 0 }
+            Remove-Item "$($b.Path)\*" -Recurse -Force -ErrorAction SilentlyContinue
+            $mb = [math]::Round($sz / 1MB, 1)
+            $totalMB += $mb
+            Log "  Browser cache: $($b.Name) ($mb MB)" "Gray"
+        } catch {
+            Log "  Browser cache skip: $($b.Name)" "DarkGray"
+        }
+    }
+}
+
+# DNS cache flush
+ipconfig /flushdns | Out-Null
+Log "  DNS cache flushed" "Gray"
+
 Log "Cleanup done - freed ~$totalMB MB" "Green"
 
 # Step 4: 디스크 최적화
