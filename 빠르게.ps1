@@ -1,4 +1,4 @@
-# Speed Optimizer - 속도 최적화 전용 (5~10분)
+# Speed Optimizer
 
 $LogFile = "$PSScriptRoot\log_speed_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
 
@@ -21,13 +21,20 @@ function Section {
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Clear-Host
 Write-Host ("=" * 55) -ForegroundColor Cyan
-Write-Host "   Windows 속도 최적화 (5~10분)" -ForegroundColor Cyan
+Write-Host "   Windows Speed Optimizer (5~10min)" -ForegroundColor Cyan
 Write-Host ("=" * 55) -ForegroundColor Cyan
 Log "Start - PC: $env:COMPUTERNAME" "Green"
 
+# SSD 여부 확인 (여러 단계에서 사용)
+$isSSD = $false
+try {
+    if (Get-PhysicalDisk | Where-Object { $_.MediaType -eq "SSD" }) { $isSSD = $true }
+} catch {}
+Log "Drive type: $(if($isSSD){'SSD'}else{'HDD'})" "Gray"
+
 # Step 1: 시작프로그램 정리
-Section "1/7  Startup Programs"
-Log "Disabling unnecessary startup entries..." "Cyan"
+Section "1/9  Startup Programs"
+Log "Removing unnecessary startup entries..." "Cyan"
 $startupKeys = @(
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
@@ -42,7 +49,7 @@ foreach ($key in $startupKeys) {
         $entries.PSObject.Properties | Where-Object { $_.Name -notlike "PS*" } | ForEach-Object {
             if ($bloat -contains $_.Name) {
                 Remove-ItemProperty -Path $key -Name $_.Name -ErrorAction SilentlyContinue
-                Log "  Removed startup: $($_.Name)" "Gray"
+                Log "  Removed: $($_.Name)" "Gray"
             }
         }
     }
@@ -50,33 +57,27 @@ foreach ($key in $startupKeys) {
 $delayKey = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Serialize"
 if (-not (Test-Path $delayKey)) { New-Item -Path $delayKey -Force | Out-Null }
 Set-ItemProperty -Path $delayKey -Name "StartupDelayInMSec" -Value 0 -Type DWORD
-Log "Startup delay removed" "Gray"
-Log "Startup optimization done" "Green"
+Log "Startup delay: 0ms" "Gray"
+Log "Startup done" "Green"
 
 # Step 2: 불필요한 서비스 끄기
-Section "2/7  Background Services"
+Section "2/9  Background Services"
 Log "Disabling unnecessary services..." "Cyan"
 $servicesToDisable = @(
-    @{Name="DiagTrack";        Desc="Telemetry tracking"},
-    @{Name="dmwappushservice"; Desc="WAP Push Routing"},
-    @{Name="SysMain";          Desc="Superfetch (SSD only)"},
+    @{Name="DiagTrack";        Desc="Telemetry"},
+    @{Name="dmwappushservice"; Desc="WAP Push"},
+    @{Name="SysMain";          Desc="Superfetch"},
     @{Name="Fax";              Desc="Fax"},
-    @{Name="XblAuthManager";   Desc="Xbox Live Auth"},
-    @{Name="XblGameSave";      Desc="Xbox Live Game Save"},
+    @{Name="XblAuthManager";   Desc="Xbox Auth"},
+    @{Name="XblGameSave";      Desc="Xbox GameSave"},
     @{Name="XboxNetApiSvc";    Desc="Xbox Network"},
-    @{Name="MapsBroker";       Desc="Maps Manager"},
-    @{Name="RetailDemo";       Desc="Retail Demo"},
-    @{Name="RemoteRegistry";   Desc="Remote Registry"}
+    @{Name="MapsBroker";       Desc="Maps"},
+    @{Name="RetailDemo";       Desc="RetailDemo"},
+    @{Name="RemoteRegistry";   Desc="RemoteRegistry"}
 )
-$isSSD = $false
-try {
-    if (Get-PhysicalDisk | Where-Object { $_.MediaType -eq "SSD" }) { $isSSD = $true }
-} catch {}
-Log "  Drive type: $(if($isSSD){'SSD'}else{'HDD'})" "Gray"
-
 foreach ($svc in $servicesToDisable) {
     if ($svc.Name -eq "SysMain" -and -not $isSSD) {
-        Log "  Kept SysMain (HDD - Superfetch helps)" "DarkGray"
+        Log "  Kept SysMain (HDD)" "DarkGray"
         continue
     }
     $s = Get-Service -Name $svc.Name -ErrorAction SilentlyContinue
@@ -84,16 +85,16 @@ foreach ($svc in $servicesToDisable) {
         try {
             Stop-Service -Name $svc.Name -Force -ErrorAction SilentlyContinue
             Set-Service -Name $svc.Name -StartupType Disabled -ErrorAction SilentlyContinue
-            Log "  Disabled: $($svc.Name) - $($svc.Desc)" "Gray"
+            Log "  Disabled: $($svc.Name)" "Gray"
         } catch {
             Log "  Skip: $($svc.Name)" "DarkGray"
         }
     }
 }
-Log "Service optimization done" "Green"
+Log "Services done" "Green"
 
-# Step 3: 임시파일 정리 (디스크 공간 확보)
-Section "3/7  Temp Files Cleanup"
+# Step 3: 임시파일 정리
+Section "3/9  Temp Files Cleanup"
 Log "Cleaning temp files..." "Cyan"
 $cleanPaths = @(
     $env:TEMP, $env:TMP,
@@ -120,60 +121,55 @@ foreach ($p in $cleanPaths) {
 try { Clear-RecycleBin -Force -ErrorAction SilentlyContinue; Log "  Recycle Bin emptied" "Gray" } catch {}
 Log "Cleanup done - freed ~$totalMB MB" "Green"
 
-# Step 4: 디스크 최적화 (HDD=조각모음 / SSD=TRIM)
-Section "4/7  Disk Optimization"
+# Step 4: 디스크 최적화
+Section "4/9  Disk Optimization"
+Log "Optimizing disk..." "Cyan"
 try {
     $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match "^[A-Z]:\\" }
     foreach ($drive in $drives) {
-        $driveLetter = $drive.Root.TrimEnd('\')
         if ($isSSD) {
-            Log "  SSD TRIM: $driveLetter" "Cyan"
             Optimize-Volume -DriveLetter $drive.Name -ReTrim -Verbose 2>&1 | Out-Null
-            Log "  TRIM done: $driveLetter" "Gray"
+            Log "  TRIM: $($drive.Root)" "Gray"
         } else {
-            Log "  HDD Defrag: $driveLetter (analysis only - full defrag takes long)" "Cyan"
             Optimize-Volume -DriveLetter $drive.Name -Analyze -Verbose 2>&1 | Out-Null
-            Log "  Defrag analysis done: $driveLetter" "Gray"
+            Log "  Analyzed: $($drive.Root)" "Gray"
         }
     }
 } catch {
     Log "  Disk optimization error: $($_.Exception.Message)" "Red"
 }
-Log "Disk optimization done" "Green"
+Log "Disk done" "Green"
 
-# Step 5: 가상메모리 최적화
-Section "5/7  Virtual Memory (Page File)"
-Log "Checking RAM and page file..." "Cyan"
+# Step 5: 가상메모리
+Section "5/9  Virtual Memory"
+Log "Checking RAM..." "Cyan"
 try {
     $ram = [math]::Round((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
-    Log "  Total RAM: $ram GB" "Gray"
+    Log "  RAM: $ram GB" "Gray"
     if ($ram -le 4) {
-        # RAM 4GB 이하면 페이지파일 시스템 관리로 설정 (자동 최적화)
         $cs = Get-WmiObject Win32_ComputerSystem
         $cs.AutomaticManagedPagefile = $true
         $cs.Put() | Out-Null
-        Log "  RAM low ($ram GB) - page file set to system managed" "Yellow"
+        Log "  Page file: system managed (low RAM)" "Yellow"
     } else {
-        Log "  RAM sufficient ($ram GB) - page file OK" "Green"
+        Log "  Page file: OK" "Green"
     }
 } catch {
-    Log "  Page file check error: $($_.Exception.Message)" "Red"
+    Log "  RAM check error: $($_.Exception.Message)" "Red"
 }
-Log "Virtual memory check done" "Green"
+Log "Memory done" "Green"
 
-# Step 6: 드라이버 오류 확인
-Section "6/7  Driver Error Check"
-Log "Checking for driver errors..." "Cyan"
+# Step 6: 드라이버 확인
+Section "6/9  Driver Check"
+Log "Checking drivers..." "Cyan"
 try {
     $errorDevices = Get-WmiObject Win32_PnPEntity |
         Where-Object { $_.ConfigManagerErrorCode -ne 0 } |
         Select-Object Name, ConfigManagerErrorCode
     if ($errorDevices) {
-        Log "  WARNING - Devices with errors:" "Yellow"
-        $errorDevices | ForEach-Object {
-            Log "    ! $($_.Name) (error code: $($_.ConfigManagerErrorCode))" "Yellow"
+        foreach ($d in $errorDevices) {
+            Log "  Info: $($d.Name) (code $($d.ConfigManagerErrorCode)) - not speed related" "DarkGray"
         }
-        Log "  -> Device Manager에서 확인 후 드라이버 재설치 권장" "Yellow"
     } else {
         Log "  All drivers OK" "Green"
     }
@@ -182,9 +178,9 @@ try {
 }
 Log "Driver check done" "Green"
 
-# Step 7: 시각효과 & 전원 설정
-Section "7/7  Visual Effects & Power Plan"
-Log "Setting visual effects to performance..." "Cyan"
+# Step 7: 시각효과 및 전원
+Section "7/9  Visual Effects and Power"
+Log "Setting performance mode..." "Cyan"
 $perfKey = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
 if (-not (Test-Path $perfKey)) { New-Item -Path $perfKey -Force | Out-Null }
 Set-ItemProperty -Path $perfKey -Name "VisualFXSetting" -Value 2 -Type DWORD
@@ -195,7 +191,7 @@ Set-ItemProperty -Path $advKey -Name "MenuShowDelay" -Value "0" -ErrorAction Sil
 
 $windowKey = "HKCU:\Control Panel\Desktop\WindowMetrics"
 Set-ItemProperty -Path $windowKey -Name "MinAnimate" -Value "0" -ErrorAction SilentlyContinue
-Log "Visual effects: performance mode" "Gray"
+Log "  Visual effects: performance" "Gray"
 
 $hp = powercfg /list 2>&1 | Select-String "High performance"
 if ($hp) {
@@ -204,44 +200,100 @@ if ($hp) {
 } else {
     powercfg /setactive SCHEME_MIN | Out-Null
 }
-Log "Power plan: High Performance" "Gray"
+Log "  Power plan: High Performance" "Gray"
 
 powercfg /hibernate off | Out-Null
-Log "Hibernation disabled" "Gray"
+Log "  Hibernation: disabled" "Gray"
 
 $personKey = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
 Set-ItemProperty -Path $personKey -Name "EnableTransparency" -Value 0 -Type DWORD -ErrorAction SilentlyContinue
-Log "Transparency disabled" "Gray"
+Log "  Transparency: off" "Gray"
 
 $bgKey = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications"
 Set-ItemProperty -Path $bgKey -Name "GlobalUserDisabled" -Value 1 -Type DWORD -ErrorAction SilentlyContinue
-Log "Background apps disabled" "Gray"
+Log "  Background apps: off" "Gray"
+Log "Visual and power done" "Green"
 
-# 바이러스 검사 실행 (Windows Defender)
-Log "Running Windows Defender quick scan..." "Cyan"
+# Step 8: 레지스트리 최적화
+Section "8/9  Registry Optimization"
+Log "Applying registry tweaks..." "Cyan"
+
+# 메뉴 반응속도
+Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "MenuShowDelay" -Value "0" -ErrorAction SilentlyContinue
+Log "  Menu delay: 0ms" "Gray"
+
+# 탐색기 반응속도
+$explorerKey = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+Set-ItemProperty -Path $explorerKey -Name "ExtendedUIHoverTime" -Value 1 -Type DWORD -ErrorAction SilentlyContinue
+Log "  Explorer response: fast" "Gray"
+
+# 알림센터 끄기
+$notifKey = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
+if (-not (Test-Path $notifKey)) { New-Item -Path $notifKey -Force | Out-Null }
+Set-ItemProperty -Path $notifKey -Name "DisableNotificationCenter" -Value 1 -Type DWORD -ErrorAction SilentlyContinue
+Log "  Notification center: off" "Gray"
+
+# 게임바 끄기
+$gameKey = "HKCU:\SOFTWARE\Microsoft\GameBar"
+if (-not (Test-Path $gameKey)) { New-Item -Path $gameKey -Force | Out-Null }
+Set-ItemProperty -Path $gameKey -Name "AutoGameModeEnabled" -Value 0 -Type DWORD -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $gameKey -Name "AllowAutoGameMode" -Value 0 -Type DWORD -ErrorAction SilentlyContinue
+$gameCapKey = "HKCU:\System\GameConfigStore"
+if (-not (Test-Path $gameCapKey)) { New-Item -Path $gameCapKey -Force | Out-Null }
+Set-ItemProperty -Path $gameCapKey -Name "GameDVR_Enabled" -Value 0 -Type DWORD -ErrorAction SilentlyContinue
+Log "  Game bar: off" "Gray"
+
+# 커널 RAM 상주
+$memKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
+Set-ItemProperty -Path $memKey -Name "DisablePagingExecutive" -Value 1 -Type DWORD -ErrorAction SilentlyContinue
+Log "  Kernel in RAM: on" "Gray"
+
+# SSD 최적화
+if ($isSSD) {
+    Set-ItemProperty -Path $memKey -Name "LargeSystemCache" -Value 0 -Type DWORD -ErrorAction SilentlyContinue
+    Log "  SSD paging: optimized" "Gray"
+}
+
+# TCP 최적화
+$tcpKey = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
+Set-ItemProperty -Path $tcpKey -Name "TcpTimedWaitDelay" -Value 30 -Type DWORD -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $tcpKey -Name "DefaultTTL" -Value 64 -Type DWORD -ErrorAction SilentlyContinue
+Log "  TCP: optimized" "Gray"
+
+# 빠른 시작
+$fastbootKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"
+Set-ItemProperty -Path $fastbootKey -Name "HiberbootEnabled" -Value 1 -Type DWORD -ErrorAction SilentlyContinue
+Log "  Fast startup: on" "Gray"
+
+# 부팅 멀티코어
+try {
+    $cpuCount = (Get-WmiObject Win32_Processor).NumberOfLogicalProcessors
+    bcdedit /set numproc $cpuCount 2>&1 | Out-Null
+    Log "  Boot cores: $cpuCount" "Gray"
+} catch {
+    Log "  Boot core setting skipped" "DarkGray"
+}
+
+Log "Registry done" "Green"
+
+# Step 9: Defender 빠른 검사
+Section "9/9  Windows Defender Scan"
+Log "Starting quick scan (background)..." "Cyan"
 try {
     Start-MpScan -ScanType QuickScan -ErrorAction Stop
-    Log "Defender quick scan started (runs in background)" "Green"
+    Log "Defender scan started in background" "Green"
 } catch {
     Log "Defender scan skip: $($_.Exception.Message)" "DarkGray"
 }
 
-Log "Performance optimization done" "Green"
-
 # 완료
 Write-Host ""
 Write-Host ("=" * 55) -ForegroundColor Green
-Write-Host "  속도 최적화 완료! 재부팅하면 바로 체감됩니다." -ForegroundColor Green
+Write-Host "  Speed optimization complete!" -ForegroundColor Green
+Write-Host "  Reboot for full effect." -ForegroundColor Green
 Write-Host ("=" * 55) -ForegroundColor Green
-
-# 드라이버 오류 있으면 다시 알림
-$errorDevices = Get-WmiObject Win32_PnPEntity | Where-Object { $_.ConfigManagerErrorCode -ne 0 }
-if ($errorDevices) {
-    Write-Host ""
-    Write-Host "  ! 드라이버 오류 감지됨 - 장치 관리자 확인 필요" -ForegroundColor Yellow
-}
-
 Log "Done. Log: $LogFile" "Green"
+
 Write-Host ""
 $ans = Read-Host "Reboot now? (Y/N)"
 if ($ans -eq "Y" -or $ans -eq "y") {
